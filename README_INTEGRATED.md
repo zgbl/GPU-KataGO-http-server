@@ -354,9 +354,12 @@ GPU-KataGO-http-server/
 ## 📞 支持
 
 如有问题，请：
-1. 查看本文档的故障排除部分
-2. 检查项目 Issues
-3. 提交新的 Issue 描述问题
+1. 查看 [快速启动指南](QUICK_START.md)
+2. 参考 [详细故障排除指南](TROUBLESHOOTING.md)
+3. 运行健康检查脚本: `./health_check.sh`
+4. 运行调试脚本: `docker exec -it katago-integrated-server ./debug_katago.sh`
+5. 检查项目 Issues
+6. 提交新的 Issue 描述问题
 
 ---
 

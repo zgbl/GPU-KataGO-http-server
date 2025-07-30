@@ -372,8 +372,10 @@ docker-compose -f docker-compose.integrated.yml up -d
    docker exec katago-integrated-server ls -la /app/models/
    
    # 尝试手动运行 KataGo 测试
-   docker exec katago-integrated-server /app/bin/katago benchmark -model /app/models/model.bin.gz -config /app/configs/katago_gtp.cfg
-   ```
+    docker exec katago-integrated-server /app/bin/katago benchmark -model /app/models/model.bin.gz -config /app/configs/katago_gtp.cfg
+    ```
+
+**💡 更多故障排除方案:** 如需更详细的诊断步骤和解决方案，请参考 [故障排除指南](TROUBLESHOOTING.md)。
 
 ## 📋 当前版本状态
 
@@ -407,6 +409,7 @@ docker-compose -f docker-compose.integrated.yml up -d
 ## 📞 获取帮助
 
 - 📖 查看完整文档: [README_INTEGRATED.md](README_INTEGRATED.md)
+- 🔧 故障排除指南: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 - 🐛 报告问题: 提交 GitHub Issue
 - 💬 讨论交流: 项目讨论区
 
