@@ -49,7 +49,7 @@ try {
 # 检查NVIDIA Docker支持（如果使用GPU）
 if ($GPU) {
     try {
-        docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi | Out-Null
+        docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi | Out-Null
         Write-Success "✓ NVIDIA Docker 支持已启用"
     } catch {
         Write-Warning "⚠️  警告: NVIDIA Docker 支持可能未正确配置"

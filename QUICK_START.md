@@ -30,7 +30,8 @@
 
 3. **验证 GPU 支持**
    ```powershell
-   docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
+   # 注意：使用较新的 CUDA 版本
+   docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
    ```
 
 ### Linux 用户
@@ -192,6 +193,22 @@ curl -X POST http://localhost:8080/select-move/katago_gtp_bot \
 }
 ```
 
+### 4. 运行完整测试套件
+```bash
+# 运行集成测试脚本
+python test_integrated_server.py
+```
+
+**测试结果说明:**
+- ✅ 健康检查测试 - 验证服务器基本状态
+- ✅ 服务器信息测试 - 验证 API 信息端点
+- ✅ 空棋盘走法测试 - 验证基本走法生成
+- ✅ 局面走法测试 - 验证复杂局面处理
+- ✅ 错误处理测试 - 验证异常情况处理
+- ⚠️ 局面评估测试 - 可能因 KataGo 引擎问题而失败
+
+**注意:** 如果 KataGo 引擎启动失败，部分需要引擎计算的功能（如局面评估）可能不可用，但 HTTP 服务器本身仍然正常运行。
+
 ## 🎮 使用示例
 
 ### Python 客户端示例
@@ -220,11 +237,17 @@ python test_integrated_server.py --test move
 
 ### 查看日志
 ```bash
-# 容器日志
+# 容器日志（实时）
 docker logs -f katago-integrated-server
+
+# 容器日志（最近30行）
+docker logs katago-integrated-server --tail 30
 
 # 应用日志
 tail -f logs/http_server.log
+
+# 检查 KataGo 引擎状态
+docker exec katago-integrated-server ps aux | grep katago
 ```
 
 ### 性能监控
@@ -261,7 +284,7 @@ ls -la KataGo-BlackRice/models/
 
 # 检查 GPU 支持
 nvidia-smi
-docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
 ```
 
 ### 问题 2: API 响应慢
@@ -304,12 +327,82 @@ netstat -ano | findstr :8080  # Windows
 lsof -i :8080                 # Linux/macOS
 ```
 
+### 问题 5: KataGo 配置文件错误
+**症状:** KataGo 进程启动失败，日志显示 `ConfigParsingError: Key 'nnCacheSizePowerOfTwo' was specified multiple times`
+
+**解决方案:**
+```bash
+# 检查配置文件中的重复键
+grep -n "nnCacheSizePowerOfTwo" configs/katago_gtp.cfg
+
+# 编辑配置文件，移除重复的配置项
+# 确保每个配置键只出现一次
+
+# 重新构建和启动容器
+docker-compose -f docker-compose.integrated.yml down
+docker-compose -f docker-compose.integrated.yml up -d
+```
+
+### 问题 6: KataGo 进程反复死亡
+**症状:** 容器日志显示 "KataGo process died" 和 "Failed to resurrect KataGo process"
+
+**可能原因和解决方案:**
+1. **GPU 内存不足:**
+   ```bash
+   # 检查 GPU 内存使用
+   nvidia-smi
+   
+   # 调整配置文件减少内存使用
+   # 在 configs/katago_gtp.cfg 中:
+   # nnCacheSizePowerOfTwo = 20  # 减少到更小的值
+   ```
+
+2. **CUDA 版本兼容性:**
+   ```bash
+   # 检查容器内 CUDA 版本
+   docker exec katago-integrated-server nvidia-smi
+   
+   # 验证 KataGo 版本信息
+   docker exec katago-integrated-server /app/bin/katago version
+   ```
+
+3. **模型文件问题:**
+   ```bash
+   # 验证模型文件完整性
+   docker exec katago-integrated-server ls -la /app/models/
+   
+   # 尝试手动运行 KataGo 测试
+   docker exec katago-integrated-server /app/bin/katago benchmark -model /app/models/model.bin.gz -config /app/configs/katago_gtp.cfg
+   ```
+
+## 📋 当前版本状态
+
+### ✅ 已验证功能
+- Docker 镜像构建和容器启动
+- HTTP 服务器基本功能
+- 健康检查端点
+- API 信息端点
+- 基本走法生成
+- 错误处理机制
+- GPU 环境检测
+
+### ⚠️ 已知问题
+- KataGo 引擎可能出现启动失败和反复重启
+- 局面评估功能可能不稳定
+- 需要手动修复配置文件中的重复键问题
+
+### 🔧 推荐配置
+- 使用 CUDA 12.x 版本
+- 确保 GPU 有足够内存（建议 4GB+）
+- 定期检查容器日志以监控 KataGo 引擎状态
+
 ## 🎯 下一步
 
 1. **阅读完整文档**: [README_INTEGRATED.md](README_INTEGRATED.md)
 2. **API 参考**: 查看 `/info` 端点获取完整 API 列表
 3. **性能调优**: 根据硬件配置调整 `configs/katago_gtp.cfg`
 4. **集成开发**: 使用 `example_client.py` 作为起点开发自己的应用
+5. **故障排查**: 参考常见问题部分解决 KataGo 引擎问题
 
 ## 📞 获取帮助
 
