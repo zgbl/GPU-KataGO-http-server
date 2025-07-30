@@ -38,8 +38,7 @@ python sgf_test_claude.py
 
 ## 文件说明
 
-- `sgf_http_tester.py` - 主要的 SGF HTTP 测试工具
-- `demo_sgf_tester.py` - 演示脚本，用于自动测试功能
+- `sgf_test_claude.py` - 主要的 SGF HTTP 测试工具
 - `SGF_TESTER_README.md` - 本说明文档
 
 ## 使用方法

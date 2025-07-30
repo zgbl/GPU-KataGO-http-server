@@ -13,9 +13,8 @@
 
 | 文档 | 用途 |
 |------|------|
-| [QUICK_START_CURRENT.md](QUICK_START_CURRENT.md) | 🚀 **快速开始** (推荐) |
-| [CURRENT_STATUS.md](CURRENT_STATUS.md) | 📋 **详细状态说明** |
-| [README_INTEGRATED.md](README_INTEGRATED.md) | 🔧 技术文档 |
+| [QUICK_START.md](QUICK_START.md) | 🚀 **快速开始** (推荐) |
+| [README_INTEGRATED.md](README_INTEGRATED.md) | 📋 **详细技术文档** |
 | [SGF_TESTER_README.md](SGF_TESTER_README.md) | 🧪 测试工具说明 |
 
 ## 🚀 快速开始
@@ -108,8 +107,8 @@ python sgf_test_claude.py
 
 ### 获取帮助
 
-- 📋 查看 [CURRENT_STATUS.md](CURRENT_STATUS.md) 了解详细状态
-- 🚀 查看 [QUICK_START_CURRENT.md](QUICK_START_CURRENT.md) 获取快速指南
+- 📋 查看 [README_INTEGRATED.md](README_INTEGRATED.md) 了解详细状态
+- 🚀 查看 [QUICK_START.md](QUICK_START.md) 获取快速指南
 - 🧪 使用 `sgf_test_claude.py` 进行测试验证
 
 ## 📈 项目历史
@@ -120,4 +119,4 @@ python sgf_test_claude.py
 
 ---
 
-**🎯 推荐**: 新用户请直接查看 [QUICK_START_CURRENT.md](QUICK_START_CURRENT.md) 快速开始使用！
+**🎯 推荐**: 新用户请直接查看 [QUICK_START.md](QUICK_START.md) 快速开始使用！
