@@ -26,9 +26,9 @@
 
 #### 测试文件
 
-- **sgf_test_claude.py** - SGF测试工具 (推荐使用)
-- **demo_sgf_tester.py** - 自动化SGF测试
-- **sgf_http_tester.py** - 交互式SGF测试
+- **http_test.py** - SGF测试工具 (推荐使用)
+- **Pythontest/demo_sgf_tester.py** - 自动化SGF测试
+- **Pythontest/sgf_http_tester.py** - 交互式SGF测试
 
 ### API接口说明
 
@@ -275,7 +275,7 @@ Content-Type: application/json
 
 ```bash
 # 运行完整测试套件
-python test_integrated_server.py
+python Pythontest/test_integrated_server.py
 
 # 测试特定功能
 python test_integrated_server.py --test health

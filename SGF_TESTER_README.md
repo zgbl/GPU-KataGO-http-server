@@ -4,7 +4,7 @@
 
 ## 🎯 推荐使用 (当前版本)
 
-✅ **sgf_test_claude.py** - **主要推荐**
+✅ **http_test.py** - **主要推荐**
 - 适配新的Analysis服务器API格式
 - 支持详细分析模式
 - 完整的SGF解析和逐步分析
@@ -13,7 +13,7 @@
 
 🔧 **使用方法**:
 ```bash
-python sgf_test_claude.py
+python http_test.py
 ```
 
 选择选项:
@@ -38,7 +38,7 @@ python sgf_test_claude.py
 
 ## 文件说明
 
-- `sgf_test_claude.py` - 主要的 SGF HTTP 测试工具
+- `http_test.py` - 主要的 SGF HTTP 测试工具
 - `SGF_TESTER_README.md` - 本说明文档
 
 ## 使用方法
@@ -60,7 +60,7 @@ docker ps --filter "name=katago"
 运行主测试工具进入交互模式：
 
 ```bash
-python sgf_http_tester.py
+python Pythontest/sgf_http_tester.py
 ```
 
 交互界面提供以下选项：
@@ -77,7 +77,7 @@ python sgf_http_tester.py
 
 ```bash
 # 完整演示（分析前5手棋）
-python demo_sgf_tester.py
+python Pythontest/demo_sgf_tester.py
 
 # 快速测试（仅测试基本功能）
 python demo_sgf_tester.py --quick

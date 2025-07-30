@@ -17,7 +17,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 # 添加katago-server目录到Python路径
-sys.path.append(os.path.join(os.path.dirname(__file__), 'katago-server'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'katago-server'))
 
 from katago_gtp_bot import KataGTPBot
 

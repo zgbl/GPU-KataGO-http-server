@@ -5,7 +5,7 @@
 ✅ **完全正常工作** - 使用新的Analysis服务器架构
 
 - 🚀 **一键启动**: `docker-compose -f docker-compose.integrated.yml up --build -d`
-- 🧪 **测试工具**: `python sgf_test_claude.py`
+- 🧪 **测试工具**: `python http_test.py`
 - 📊 **完整分析**: 返回胜率、分数、候选手等完整数据
 - 🔧 **核心文件**: `katago_analysis_server.py` (新的Analysis服务器)
 
@@ -83,9 +83,9 @@ python sgf_test_claude.py
 | 文件 | 用途 | 状态 |
 |------|------|------|
 | `katago_analysis_server.py` | **主服务器** | ✅ 当前使用 |
-| `sgf_test_claude.py` | **测试工具** | ✅ 推荐 |
+| `http_test.py` | **测试工具** | ✅ 推荐 |
 | `docker-compose.integrated.yml` | Docker配置 | ✅ 当前配置 |
-| `demo_sgf_tester.py` | 自动化测试 | ✅ 可用 |
+| `Pythontest/` | 开发测试脚本目录 | 📁 备用工具 |
 
 ## 🆘 故障排除
 
@@ -109,7 +109,7 @@ python sgf_test_claude.py
 
 - 📋 查看 [README_INTEGRATED.md](README_INTEGRATED.md) 了解详细状态
 - 🚀 查看 [QUICK_START.md](QUICK_START.md) 获取快速指南
-- 🧪 使用 `sgf_test_claude.py` 进行测试验证
+- 🧪 使用 `http_test.py` 进行测试验证
 
 ## 📈 项目历史
 

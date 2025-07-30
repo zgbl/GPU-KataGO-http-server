@@ -10,7 +10,7 @@ docker-compose -f docker-compose.integrated.yml up --build -d
 docker ps
 
 # 3. 测试分析
-python sgf_test_claude.py
+python http_test.py
 ```
 
 ## 📁 关键文件
@@ -18,7 +18,7 @@ python sgf_test_claude.py
 | 文件 | 用途 | 状态 |
 |------|------|------|
 | `katago_analysis_server.py` | **主服务器** | ✅ 正常工作 |
-| `sgf_test_claude.py` | **测试工具** | ✅ 推荐使用 |
+| `http_test.py` | **测试工具** | ✅ 推荐使用 |
 | `docker-compose.integrated.yml` | Docker配置 | ✅ 当前使用 |
 | `CURRENT_STATUS.md` | 详细文档 | 📋 完整说明 |
 
@@ -32,9 +32,10 @@ curl http://localhost:8080/health
 # 应该返回: {"status": "healthy"}
 ```
 
-### 2. SGF分析测试
+### 🧪 SGF分析测试
+
 ```bash
-python sgf_test_claude.py
+python http_test.py
 ```
 
 选择选项：
@@ -250,7 +251,7 @@ curl -X POST http://localhost:8080/select-move/katago_gtp_bot \
 ### 4. 运行完整测试套件
 ```bash
 # 运行集成测试脚本
-python test_integrated_server.py
+python Pythontest/test_integrated_server.py
 ```
 
 **测试结果说明:**
@@ -280,11 +281,11 @@ python example_client.py --mode interactive
 ### 完整测试套件
 ```bash
 # 运行所有测试
-python test_integrated_server.py
+python Pythontest/test_integrated_server.py
 
 # 测试特定功能
-python test_integrated_server.py --test health
-python test_integrated_server.py --test move
+python Pythontest/test_integrated_server.py --test health
+python Pythontest/test_integrated_server.py --test move
 ```
 
 ## 📊 监控和管理
