@@ -56,7 +56,7 @@ Write-Host "4. 容器内 GPU 访问:" -ForegroundColor Yellow
 try {
     $containerRunning = docker ps --filter "name=katago-integrated-server" --quiet
     if ($containerRunning) {
-        $gpuTest = docker exec katago-integrated-server nvidia-smi 2>$null
+        docker exec katago-integrated-server nvidia-smi 2>$null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✅ 容器可以访问 GPU" -ForegroundColor Green
         } else {
@@ -106,29 +106,7 @@ try {
 }
 Write-Host
 
-# 检查磁盘空间
-Write-Host "7. 磁盘空间:" -ForegroundColor Yellow
-try {
-    $drive = (Get-Location).Drive
-    $diskInfo = Get-WmiObject -Class Win32_LogicalDisk -Filter "DeviceID='$($drive.Name)'"
-    $freeSpaceGB = [math]::Round($diskInfo.FreeSpace / 1GB, 2)
-    $totalSpaceGB = [math]::Round($diskInfo.Size / 1GB, 2)
-    $usedSpaceGB = [math]::Round(($diskInfo.Size - $diskInfo.FreeSpace) / 1GB, 2)
-    $usagePercent = [math]::Round(($usedSpaceGB / $totalSpaceGB) * 100, 1)
-    
-    Write-Host "当前驱动器 ($($drive.Name)) 使用情况:"
-    Write-Host "总空间: $totalSpaceGB GB, 已使用: $usedSpaceGB GB ($usagePercent%), 可用: $freeSpaceGB GB"
-    
-    if ($freeSpaceGB -lt 5) {
-        Write-Host "⚠️ 磁盘空间不足，建议清理" -ForegroundColor Yellow
-    }
-} catch {
-    Write-Host "❌ 无法检查磁盘空间: $($_.Exception.Message)" -ForegroundColor Red
-}
-Write-Host
-
 # 总结
 Write-Host "=== 健康检查完成 ===" -ForegroundColor Cyan
 Write-Host "如果发现问题，请参考 TROUBLESHOOTING.md 获取详细的故障排除指南" -ForegroundColor Gray
 Write-Host "或运行 'docker logs katago-integrated-server' 查看完整日志" -ForegroundColor Gray
-Write-Host

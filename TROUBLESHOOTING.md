@@ -146,6 +146,33 @@ docker-compose -f docker-compose.integrated.yml down
 docker-compose -f docker-compose.integrated.yml up -d
 ```
 
+### 问题6: 规则配置冲突错误
+
+**症状:** `Cannot both specify 'rules' and individual rules like koRule/scoringRule/multiStoneSuicideLegal`
+
+**原因:** KataGo不允许同时指定统一的`rules`设置和单独的规则项（如`koRule`、`scoringRule`、`taxRule`、`multiStoneSuicideLegal`、`hasButton`、`whiteHandicapBonus`等）。
+
+**解决方案:**
+```bash
+# 方法1: 只使用统一的rules设置（推荐）
+# 编辑配置文件，删除所有单独的规则项，只保留：
+rules = tromp-taylor
+
+# 方法2: 或者删除rules设置，使用单独的规则项
+# 删除 rules = tromp-taylor 行，保留单独的规则设置
+
+# 检查配置文件中的规则冲突
+grep -E "^(rules|koRule|scoringRule|taxRule|multiStoneSuicideLegal|hasButton|whiteHandicapBonus)" configs/katago_gtp.cfg
+
+# 重启容器使配置生效
+docker-compose -f docker-compose.integrated.yml restart
+```
+
+**预防措施:**
+- 在修改配置文件时，避免同时使用`rules`和单独规则项
+- 推荐使用统一的`rules = tromp-taylor`设置
+- 定期检查配置文件的一致性
+
 ## 🔧 修复建议
 
 ### 1. 更新 katago_integrated_server.py

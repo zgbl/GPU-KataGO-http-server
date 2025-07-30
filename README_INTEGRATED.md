@@ -351,15 +351,39 @@ GPU-KataGO-http-server/
 
 欢迎提交 Issue 和 Pull Request！
 
+## 🔧 配置验证
+
+在构建和运行之前，建议验证配置文件：
+
+```powershell
+# Windows PowerShell
+.\validate_config.ps1
+
+# 验证特定配置文件
+.\validate_config.ps1 -ConfigPath "configs\katago_gtp.cfg"
+```
+
+```bash
+# Linux/macOS
+# 手动检查配置文件中的常见问题
+grep -E "^(rules|koRule|scoringRule|taxRule|multiStoneSuicideLegal|hasButton|whiteHandicapBonus)" configs/katago_gtp.cfg
+```
+
+**常见配置问题:**
+- ❌ 重复的配置键（如 `nnCacheSizePowerOfTwo` 出现多次）
+- ❌ 规则冲突（同时指定 `rules` 和单独规则项）
+- ⚠️ 缺少必要的配置项
+
 ## 📞 支持
 
 如有问题，请：
-1. 查看 [快速启动指南](QUICK_START.md)
-2. 参考 [详细故障排除指南](TROUBLESHOOTING.md)
-3. 运行健康检查脚本: `./health_check.sh`
-4. 运行调试脚本: `docker exec -it katago-integrated-server ./debug_katago.sh`
-5. 检查项目 Issues
-6. 提交新的 Issue 描述问题
+1. **首先运行配置验证**: `.\validate_config.ps1`
+2. 查看 [快速启动指南](QUICK_START.md)
+3. 参考 [详细故障排除指南](TROUBLESHOOTING.md)
+4. 运行健康检查脚本: `./health_check.sh`
+5. 运行调试脚本: `docker exec -it katago-integrated-server ./debug_katago.sh`
+6. 检查项目 Issues
+7. 提交新的 Issue 描述问题
 
 ---
 
