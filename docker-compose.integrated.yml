@@ -9,8 +9,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.integrated
-    container_name: katago-integrated-server
-    hostname: katago-integrated
+    container_name: katago-integrated-server2
+    hostname: katago-integrated2
     restart: unless-stopped
     
     # 端口映射
@@ -31,7 +31,7 @@ services:
       - ./KataGo-BlackRice/models:/app/models:ro
       
       # 日志目录
-      - ./logs:/app/logs
+      - ./logs2:/app/logs
       
       # 可选：自定义配置文件覆盖
       - ./configs:/app/configs/custom:ro

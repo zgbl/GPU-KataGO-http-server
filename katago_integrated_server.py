@@ -26,7 +26,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/app/logs/http_server.log'),
         logging.StreamHandler()
     ]
 )
@@ -40,7 +39,7 @@ class IntegratedKataGoServer:
         # 配置参数
         self.katago_binary = os.environ.get('KATAGO_BINARY', '/app/bin/katago')
         self.model_file = os.environ.get('KATAGO_MODEL', '/app/models/model.bin.gz')
-        self.config_file = os.environ.get('KATAGO_CONFIG', '/app/configs/katago_gtp.cfg')
+        self.config_file = os.environ.get('KATAGO_CONFIG', '/app/cpp/configs/analysis_example.cfg')
         self.port = int(os.environ.get('HTTP_PORT', '8080'))
         
         logger.info(f"初始化KataGo HTTP服务器")
@@ -73,13 +72,13 @@ class IntegratedKataGoServer:
             logger.info(f"✓ {description}: {file_path}")
     
     def _init_katago(self):
-        """初始化KataGo GTP引擎"""
+        """初始化KataGo Analysis引擎"""
         try:
-            katago_cmd = f"{self.katago_binary} gtp -model {self.model_file} -config {self.config_file}"
+            katago_cmd = f"{self.katago_binary} analysis -model {self.model_file} -config {self.config_file}"
             logger.info(f"启动KataGo命令: {katago_cmd}")
             
             self.katago_bot = KataGTPBot(katago_cmd.split())
-            logger.info("✓ KataGo引擎初始化成功")
+            logger.info("✓ KataGo Analysis引擎初始化成功")
             
         except Exception as e:
             error_msg = f"KataGo引擎初始化失败: {str(e)}"
@@ -114,8 +113,18 @@ class IntegratedKataGoServer:
                 
                 logger.info(f'>>> {dtstr} select_move board_size={board_size} moves_count={len(moves)} config={config}')
                 
+                # 转换moves格式：从[['B', 'R16'], ['W', 'C4']]转换为['R16', 'C4']
+                if moves and isinstance(moves[0], list) and len(moves[0]) == 2:
+                    # 如果moves是包含颜色信息的格式，提取位置信息
+                    position_moves = [move[1] for move in moves]
+                    logger.info(f'Converted moves from color+position format to position-only: {position_moves}')
+                else:
+                    # 如果moves已经是位置字符串列表，直接使用
+                    position_moves = moves
+                    logger.info(f'Using moves as-is (position-only format): {position_moves}')
+                
                 # 调用KataGo引擎
-                bot_move = self.katago_bot.select_move(moves, config)
+                bot_move = self.katago_bot.select_move(position_moves, config)
                 diagnostics = self.katago_bot.diagnostics()
                 
                 response = {
