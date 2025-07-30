@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  katago-server:
+    build: .
+    ports:
+      - "2718:2718"
+      - "2818:2818"
+    volumes:
+      - ./logs:/tmp
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    container_name: katago-http-server
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2718/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
