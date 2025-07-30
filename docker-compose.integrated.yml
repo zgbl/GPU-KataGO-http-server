@@ -1,0 +1,85 @@
+# 整合版 KataGo HTTP Server Docker Compose 配置
+# 结合最新GPU KataGo引擎和HTTP API服务器
+
+version: '3.8'
+
+services:
+  # 整合版 KataGo HTTP 服务
+  katago-integrated:
+    build:
+      context: .
+      dockerfile: Dockerfile.integrated
+    container_name: katago-integrated-server
+    hostname: katago-integrated
+    restart: unless-stopped
+    
+    # 端口映射
+    ports:
+      - "8080:8080"  # HTTP API端口
+    
+    # 环境变量
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - TZ=Asia/Shanghai
+      - LOG_LEVEL=INFO
+    
+    # 卷挂载
+    volumes:
+      # 模型文件 - 从KataGo-BlackRice项目挂载
+      - ./KataGo-BlackRice/models:/app/models:ro
+      
+      # 日志目录
+      - ./logs:/app/logs
+      
+      # 可选：自定义配置文件覆盖
+      - ./configs:/app/configs/custom:ro
+    
+    # GPU资源配置
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+    # 网络配置
+    networks:
+      - katago-network
+    
+    # 健康检查
+    healthcheck:
+      test: [
+        "CMD", 
+        "curl", "-f", 
+        "http://localhost:8080/select-move/katago_gtp_bot",
+        "-X", "POST",
+        "-H", "Content-Type: application/json",
+        "-d", '{"board_size": 19, "moves": []}',
+        "--max-time", "30"
+      ]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 120s
+    
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+# 网络配置
+networks:
+  katago-network:
+    driver: bridge
+
+# 卷配置
+volumes:
+  katago-logs:
+    driver: local

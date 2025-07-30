@@ -1,22 +1,110 @@
 version: '3.8'
 
 services:
-  katago-server:
-    build: .
+  # CPU版本 - 适用于无GPU环境
+  katago-server-cpu:
+    build:
+      context: .
+      args:
+        USE_BACKEND: EIGEN
+        USE_TCMALLOC: 1
+        USE_AVX2: 1
+        BUILD_DISTRIBUTED: 0
+        BASE_IMAGE: ubuntu:22.04
+    container_name: katago-server-cpu
     ports:
-      - "2718:2718"
-      - "2818:2818"
+      - "8080:8080"
     volumes:
-      - ./logs:/tmp
+      - ./logs:/app/logs
+      - ./models:/app/models:ro
+      - ./configs:/app/configs:ro
     environment:
       - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
+      - KATAGO_CONFIG=/app/configs/katago_gtp.cfg
+      - KATAGO_MODEL=/app/models/model.bin.gz
     restart: unless-stopped
-    container_name: katago-http-server
-    
-    # 健康检查
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:2718/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+
+  # GPU版本 - 适用于NVIDIA GPU环境
+  katago-server-gpu:
+    build:
+      context: .
+      args:
+        USE_BACKEND: CUDA
+        USE_TCMALLOC: 1
+        USE_AVX2: 1
+        BUILD_DISTRIBUTED: 0
+        BASE_IMAGE: nvidia/cuda:12.9.1-cudnn-devel-ubuntu22.04
+    container_name: katago-server-gpu
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./logs:/app/logs
+      - ./models:/app/models:ro
+      - ./configs:/app/configs:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+      - KATAGO_CONFIG=/app/configs/katago_gtp.cfg
+      - KATAGO_MODEL=/app/models/model.bin.gz
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # 开发环境 - 支持交互式调试
+  katago-server-dev:
+    build:
+      context: .
+      args:
+        USE_BACKEND: ${KATAGO_BACKEND:-EIGEN}
+        USE_TCMALLOC: 1
+        USE_AVX2: 1
+        BUILD_DISTRIBUTED: 0
+        BASE_IMAGE: ${BASE_IMAGE:-ubuntu:22.04}
+    container_name: katago-server-dev
+    ports:
+      - "8080:8080"
+      - "5000:5000"  # Flask 开发服务器端口
+    volumes:
+      - ./logs:/app/logs
+      - ./models:/app/models:ro
+      - ./configs:/app/configs:ro
+      - .:/app/src:ro  # 挂载源码用于开发
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    restart: unless-stopped
