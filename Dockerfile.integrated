@@ -48,9 +48,10 @@ RUN cd /app/cpp && \
 # 复制HTTP服务器代码
 COPY katago-server/katago_gtp_bot.py /app/katago-server/
 COPY katago-server/get_bot_app.py /app/katago-server/
+COPY katago-server/katago_server.py /app/katago-server/
 COPY katago-server/requirements.txt /app/
 
-# 复制整合的HTTP服务器脚本
+# 复制整合的HTTP服务器脚本（备用）
 COPY katago_analysis_server.py /app/
 
 # 安装Python依赖（包含flask-cors）
@@ -60,7 +61,7 @@ RUN pip3 install --no-cache-dir -r /app/requirements.txt && \
 # 复制配置文件
 COPY configs/katago_gtp.cfg /app/configs/
 
-RUN chmod +x /app/katago_analysis_server.py
+RUN chmod +x /app/katago-server/katago_server.py
 
 # 创建健康检查脚本
 RUN echo '#!/bin/bash' > /app/health_check.sh && \
@@ -78,5 +79,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=60s --timeout=30s --start-period=120s --retries=3 \
     CMD /app/health_check.sh
 
-# 启动HTTP服务器
+# 启动HTTP服务器（使用Analysis服务器）
 CMD ["python3", "/app/katago_analysis_server.py"]

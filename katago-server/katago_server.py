@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 def get_katago_config():
     """获取 KataGo 配置"""
     # 从环境变量获取配置，如果没有则使用默认值
-    katago_binary = os.getenv('KATAGO_BINARY', '/usr/local/bin/katago')
+    katago_binary = os.getenv('KATAGO_BINARY', '/app/bin/katago')
     katago_model = os.getenv('KATAGO_MODEL', '/app/models/model.bin.gz')
     katago_config = os.getenv('KATAGO_CONFIG', '/app/configs/katago_gtp.cfg')
     
@@ -81,14 +81,15 @@ def create_app():
     # 获取带有机器人端点的应用
     bot_app = get_bot_app(name='katago_gtp_bot', bot=katago_gtp_bot)
     
-    # 将机器人路由注册到主应用
+    # 将机器人路由注册到主应用（跳过内置端点）
     for rule in bot_app.url_map.iter_rules():
-        app.add_url_rule(
-            rule.rule,
-            endpoint=rule.endpoint,
-            view_func=bot_app.view_functions[rule.endpoint],
-            methods=rule.methods
-        )
+        if rule.endpoint not in ['static']:
+            app.add_url_rule(
+                rule.rule,
+                endpoint=rule.endpoint,
+                view_func=bot_app.view_functions[rule.endpoint],
+                methods=rule.methods
+            )
     
     # 添加健康检查端点
     @app.route('/health')
