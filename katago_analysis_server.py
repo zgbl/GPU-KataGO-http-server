@@ -167,8 +167,35 @@ class KataGoAnalysisEngine:
 class AnalysisKataGoServer:
     def __init__(self):
         self.app = Flask(__name__)
-        CORS(self.app)  # 启用CORS支持
         
+        # 仅使用 Flask-CORS 统一设置，避免重复的 CORS 头
+        CORS(
+            self.app,
+            resources={r"/*": {"origins": "*"}},
+            methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+            supports_credentials=False,  # 使用 "*" 时不要携带凭据
+            max_age=86400
+        )
+
+        # 手动添加OPTIONS处理（确保预检请求正常）
+        @self.app.before_request
+        def handle_preflight():
+            if request.method == "OPTIONS":
+                response = jsonify({'status': 'ok'})
+                response.headers.add("Access-Control-Allow-Origin", "*")
+                response.headers.add('Access-Control-Allow-Headers', "*")
+                response.headers.add('Access-Control-Allow-Methods', "*")
+                return response
+        
+        # 为所有响应添加CORS头部
+        @self.app.after_request
+        def after_request(response):
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+            response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+            return response
+
         # 配置参数
         self.katago_binary = os.environ.get('KATAGO_BINARY', '/app/bin/katago')
         self.model_file = os.environ.get('KATAGO_MODEL', '/app/models/model.bin.gz')
@@ -211,6 +238,35 @@ class AnalysisKataGoServer:
     def _setup_routes(self):
         """设置Flask路由"""
         
+        @self.app.route('/', methods=['GET'])
+        def root():
+            """根路径信息"""
+            return jsonify({
+                'service': 'KataGo Analysis Server',
+                'version': 'analysis-v1.0',
+                'status': 'running',
+                'endpoints': [
+                    '/health',
+                    '/info', 
+                    '/select-move/katago_gtp_bot',
+                    '/score/katago_gtp_bot',
+                    '/analyze'
+                ]
+            })
+        
+        @self.app.route('/info', methods=['GET'])
+        def info():
+            """服务器信息端点"""
+            return jsonify({
+                'service': 'KataGo Analysis Server',
+                'version': 'analysis-v1.0',
+                'katago_binary': self.engine.katago_binary,
+                'model_file': self.engine.model_file,
+                'config_file': self.engine.config_file,
+                'engine_running': self.engine.running,
+                'timestamp': datetime.now().isoformat()
+            })
+        
         @self.app.route('/health', methods=['GET'])
         def health_check():
             """健康检查端点"""
@@ -221,6 +277,96 @@ class AnalysisKataGoServer:
                 'engine_running': self.engine.running
             })
         
+        @self.app.route('/score/katago_gtp_bot', methods=['POST'])
+        def score_position():
+            """局面评估端点"""
+            try:
+                dtstr = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                content = request.json
+                
+                if not content:
+                    return jsonify({'error': '请求体不能为空'}), 400
+                
+                board_size = content.get('board_size', 19)
+                moves = content.get('moves', [])
+                config = content.get('config', {})
+                
+                logger.info(f'>>> {dtstr} score_position board_size={board_size} moves_count={len(moves)}')
+                
+                # 转换走法格式
+                if moves and isinstance(moves[0], list) and len(moves[0]) == 2:
+                    analysis_moves = moves
+                elif moves:
+                    analysis_moves = []
+                    for i, move in enumerate(moves):
+                        color = 'B' if i % 2 == 0 else 'W'
+                        analysis_moves.append([color, move])
+                else:
+                    analysis_moves = []
+                
+                # 调用分析引擎
+                result = self.engine.analyze_position(board_size, analysis_moves, config)
+                
+                if result:
+                    score_data = {
+                        'score': result.get('rootInfo', {}).get('scoreMean', 0.0),
+                        'score_stdev': result.get('rootInfo', {}).get('scoreStdev', 0.0),
+                        'winrate': result.get('rootInfo', {}).get('winrate', 0.5),
+                        'visits': result.get('rootInfo', {}).get('visits', 0),
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    
+                    logger.info(f'<<< {dtstr} score_position response: score={score_data["score"]:.1f}')
+                    return jsonify(score_data)
+                else:
+                    return jsonify({'error': 'Score analysis failed'}), 500
+                    
+            except Exception as e:
+                error_msg = f"处理score请求时出错: {str(e)}"
+                logger.error(error_msg)
+                return jsonify({'error': error_msg}), 500
+        
+        @self.app.route('/analyze', methods=['POST'])
+        def analyze():
+            """原生分析端点"""
+            try:
+                dtstr = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                content = request.json
+                
+                if not content:
+                    return jsonify({'error': '请求体不能为空'}), 400
+                
+                board_size = content.get('board_size', 19)
+                moves = content.get('moves', [])
+                config = content.get('config', {})
+                
+                logger.info(f'>>> {dtstr} analyze board_size={board_size} moves_count={len(moves)}')
+                
+                # 转换走法格式
+                if moves and isinstance(moves[0], list) and len(moves[0]) == 2:
+                    analysis_moves = moves
+                elif moves:
+                    analysis_moves = []
+                    for i, move in enumerate(moves):
+                        color = 'B' if i % 2 == 0 else 'W'
+                        analysis_moves.append([color, move])
+                else:
+                    analysis_moves = []
+                
+                # 调用分析引擎，返回完整分析数据
+                result = self.engine.analyze_position(board_size, analysis_moves, config)
+                
+                if result:
+                    logger.info(f'<<< {dtstr} analyze response: {len(result.get("moveInfos", []))} moves analyzed')
+                    return jsonify(result)  # 返回完整的KataGo分析结果
+                else:
+                    return jsonify({'error': 'Analysis failed'}), 500
+                    
+            except Exception as e:
+                error_msg = f"处理analyze请求时出错: {str(e)}"
+                logger.error(error_msg)
+                return jsonify({'error': error_msg}), 500
+
         @self.app.route('/select-move/katago_gtp_bot', methods=['POST'])
         def select_move():
             """获取最佳走法和分析数据"""
