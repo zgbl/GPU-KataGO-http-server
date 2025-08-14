@@ -58,3 +58,8 @@ katago
 katago.exe
 *.cfg.bak
 *.cfg.tmp
+
+# 现有内容保持不变...
+
+# 备份文件夹
+releases/
