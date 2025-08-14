@@ -18,7 +18,7 @@ import subprocess
 import threading
 import time
 from datetime import datetime
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from queue import Queue, Empty
 
@@ -168,33 +168,56 @@ class AnalysisKataGoServer:
     def __init__(self):
         self.app = Flask(__name__)
         
-        # 仅使用 Flask-CORS 统一设置，避免重复的 CORS 头
+        # 添加调试日志
+        print("[DEBUG] 正在初始化 Flask-CORS...")
+        
+        # 使用更简单的 CORS 配置
+        try:
+            cors = CORS(self.app, 
+                       origins=["http://localhost:8090", "http://192.168.0.249:8080"],
+                       allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+                       methods=["GET", "POST", "OPTIONS"],
+                       supports_credentials=True)
+            print(f"[DEBUG] Flask-CORS 初始化成功: {cors}")
+        except Exception as e:
+            print(f"[ERROR] Flask-CORS 初始化失败: {e}")
+            # 如果 Flask-CORS 失败，使用手动方式
+            @self.app.after_request
+            def after_request(response):
+                origin = request.headers.get('Origin')
+                if origin in ["http://localhost:8090", "http://192.168.0.249:8080"]:
+                    response.headers.add('Access-Control-Allow-Origin', origin)
+                    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+                    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+                    response.headers.add('Access-Control-Allow-Credentials', 'true')
+                return response
+                
+            @self.app.before_request
+            def before_request():
+                if request.method == 'OPTIONS':
+                    origin = request.headers.get('Origin')
+                    if origin in ["http://localhost:8090", "http://192.168.0.249:8080"]:
+                        response = make_response()
+                        response.headers.add('Access-Control-Allow-Origin', origin)
+                        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+                        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+                        response.headers.add('Access-Control-Allow-Credentials', 'true')
+                        return response
+        
+        # 配置 CORS，允许指定的来源
         CORS(
             self.app,
-            resources={r"/*": {"origins": "*"}},
+            origins=[
+                "http://localhost:8090",
+                "http://192.168.0.249:8080",
+                "https://localhost:8090",
+                "https://192.168.0.249:8080"
+            ],
             methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-            supports_credentials=False,  # 使用 "*" 时不要携带凭据
+            supports_credentials=True,
             max_age=86400
         )
-
-        # 手动添加OPTIONS处理（确保预检请求正常）
-        @self.app.before_request
-        def handle_preflight():
-            if request.method == "OPTIONS":
-                response = jsonify({'status': 'ok'})
-                response.headers.add("Access-Control-Allow-Origin", "*")
-                response.headers.add('Access-Control-Allow-Headers', "*")
-                response.headers.add('Access-Control-Allow-Methods', "*")
-                return response
-        
-        # 为所有响应添加CORS头部
-        @self.app.after_request
-        def after_request(response):
-            response.headers.add('Access-Control-Allow-Origin', '*')
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-            response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-            return response
 
         # 配置参数
         self.katago_binary = os.environ.get('KATAGO_BINARY', '/app/bin/katago')
