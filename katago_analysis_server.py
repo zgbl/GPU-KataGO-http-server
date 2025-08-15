@@ -171,10 +171,20 @@ class AnalysisKataGoServer:
         # 添加调试日志
         print("[DEBUG] 正在初始化 Flask-CORS...")
         
+        # 更新的 CORS 配置，添加 kataengine.blackrice.top
+        allowed_origins = [
+            "http://localhost:8090",
+            "http://192.168.0.249:8080",
+            "https://localhost:8090",
+            "https://192.168.0.249:8080",
+            "http://kataengine.blackrice.top",
+            "https://kataengine.blackrice.top"
+        ]
+        
         # 使用更简单的 CORS 配置
         try:
             cors = CORS(self.app, 
-                       origins=["http://localhost:8090", "http://192.168.0.249:8080"],
+                       origins=allowed_origins,
                        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
                        methods=["GET", "POST", "OPTIONS"],
                        supports_credentials=True)
@@ -185,7 +195,7 @@ class AnalysisKataGoServer:
             @self.app.after_request
             def after_request(response):
                 origin = request.headers.get('Origin')
-                if origin in ["http://localhost:8090", "http://192.168.0.249:8080"]:
+                if origin in allowed_origins:
                     response.headers.add('Access-Control-Allow-Origin', origin)
                     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
                     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
@@ -196,7 +206,7 @@ class AnalysisKataGoServer:
             def before_request():
                 if request.method == 'OPTIONS':
                     origin = request.headers.get('Origin')
-                    if origin in ["http://localhost:8090", "http://192.168.0.249:8080"]:
+                    if origin in allowed_origins:
                         response = make_response()
                         response.headers.add('Access-Control-Allow-Origin', origin)
                         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
@@ -204,15 +214,10 @@ class AnalysisKataGoServer:
                         response.headers.add('Access-Control-Allow-Credentials', 'true')
                         return response
         
-        # 配置 CORS，允许指定的来源
+        # 备用 CORS 配置
         CORS(
             self.app,
-            origins=[
-                "http://localhost:8090",
-                "http://192.168.0.249:8080",
-                "https://localhost:8090",
-                "https://192.168.0.249:8080"
-            ],
+            origins=allowed_origins,
             methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
             supports_credentials=True,
