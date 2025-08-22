@@ -171,7 +171,7 @@ class AnalysisKataGoServer:
         # 添加调试日志
         print("[DEBUG] 正在初始化 Flask-CORS...")
         
-        # 更新的 CORS 配置，添加 kataengine.blackrice.top
+        # 允许的源列表
         allowed_origins = [
             "http://localhost:8090",
             "http://192.168.0.249:8080",
@@ -181,38 +181,31 @@ class AnalysisKataGoServer:
             "https://kataengine.blackrice.top"
         ]
         
-        # 使用更简单的 CORS 配置
-        try:
-            cors = CORS(self.app, 
-                       origins=allowed_origins,
-                       allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-                       methods=["GET", "POST", "OPTIONS"],
-                       supports_credentials=True)
-            print(f"[DEBUG] Flask-CORS 初始化成功: {cors}")
-        except Exception as e:
-            print(f"[ERROR] Flask-CORS 初始化失败: {e}")
-            # 如果 Flask-CORS 失败，使用手动方式
-            @self.app.after_request
-            def after_request(response):
+        # 统一的CORS配置
+        CORS(
+            self.app,
+            origins=allowed_origins,
+            methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+            supports_credentials=True,
+            max_age=86400
+        )
+        
+        # 添加显式的OPTIONS处理
+        @self.app.before_request
+        def handle_preflight():
+            if request.method == "OPTIONS":
                 origin = request.headers.get('Origin')
                 if origin in allowed_origins:
-                    response.headers.add('Access-Control-Allow-Origin', origin)
-                    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-                    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-                    response.headers.add('Access-Control-Allow-Credentials', 'true')
-                return response
-                
-            @self.app.before_request
-            def before_request():
-                if request.method == 'OPTIONS':
-                    origin = request.headers.get('Origin')
-                    if origin in allowed_origins:
-                        response = make_response()
-                        response.headers.add('Access-Control-Allow-Origin', origin)
-                        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-                        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-                        response.headers.add('Access-Control-Allow-Credentials', 'true')
-                        return response
+                    response = make_response()
+                    response.headers.add("Access-Control-Allow-Origin", origin)
+                    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With")
+                    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+                    response.headers.add("Access-Control-Allow-Credentials", "true")
+                    response.headers.add("Access-Control-Max-Age", "86400")
+                    return response
+        
+        print(f"[DEBUG] CORS配置完成，允许的源: {allowed_origins}")
         
         # 备用 CORS 配置
         CORS(
