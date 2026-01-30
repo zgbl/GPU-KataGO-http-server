@@ -16,6 +16,7 @@
 | [QUICK_START.md](QUICK_START.md) | 🚀 **快速开始** (推荐) |
 | [README_INTEGRATED.md](README_INTEGRATED.md) | 📋 **详细技术文档** |
 | [SGF_TESTER_README.md](SGF_TESTER_README.md) | 🧪 测试工具说明 |
+| [SERVER_CONFIG.md](SERVER_CONFIG.md) | ⚙️ **配置说明** (新) |
 
 ## 🚀 快速开始
 

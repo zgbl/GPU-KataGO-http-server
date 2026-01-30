@@ -217,16 +217,40 @@ class AnalysisKataGoServer:
             max_age=86400
         )
 
-        # 配置参数
-        self.katago_binary = os.environ.get('KATAGO_BINARY', '/app/bin/katago')
-        self.model_file = os.environ.get('KATAGO_MODEL', '/app/models/model.bin.gz')
-        self.config_file = os.environ.get('KATAGO_CONFIG', '/app/cpp/configs/analysis_example.cfg')
-        self.port = int(os.environ.get('HTTP_PORT', '8080'))
+        # 加载配置文件
+        file_config = {}
+        server_config_path = os.environ.get('SERVER_CONFIG_FILE', 'server_config.json')
+        if os.path.exists(server_config_path):
+            try:
+                with open(server_config_path, 'r') as f:
+                    file_config = json.load(f)
+                logger.info(f"已加载配置文件: {server_config_path}")
+            except Exception as e:
+                logger.error(f"加载配置文件失败: {e}")
+
+        # 配置优先级: 环境变量 > 配置文件 > 默认值
+        # (或者: 配置文件 > 环境变量 > 默认值? 用户通常希望配置文件覆盖默认值，但也可能想用Env覆盖配置文件。
+        # 通常 Docker 场景下 Env 覆盖 Config File 是标准做法，但用户 specifically asked for config file to avoid typing envs.
+        # 所以如果 config file 存在，我们优先使用它，除非用户 *真的* 想覆盖。
+        # 这里我们采用: 环境变量(如果有) > 配置文件(如果有) > 默认值 的标准层级，
+        # 这样用户可以用文件配置，但紧急情况依然可以用 ENV 覆盖。)
+        
+        # 实际上用户说 "不要每次用命令行来打"，意味着他想依靠文件。
+        # 只要他不传ENV，就会用文件。
+        
+        self.katago_binary = os.environ.get('KATAGO_BINARY', file_config.get('katago_binary', '/app/bin/katago'))
+        self.model_file = os.environ.get('KATAGO_MODEL', file_config.get('model_file', '/app/models/model.bin.gz'))
+        self.config_file = os.environ.get('KATAGO_CONFIG', file_config.get('config_file', '/app/cpp/configs/analysis_example.cfg'))
+        self.port = int(os.environ.get('HTTP_PORT', file_config.get('port', 8080)))
+        self.max_variations = int(os.environ.get('MAX_VARIATIONS', file_config.get('max_variations', 15)))
         
         logger.info(f"初始化KataGo Analysis HTTP服务器")
+        logger.info(f"配置文件路径: {server_config_path}")
         logger.info(f"KataGo二进制文件: {self.katago_binary}")
         logger.info(f"模型文件: {self.model_file}")
         logger.info(f"配置文件: {self.config_file}")
+        logger.info(f"服务端口: {self.port}")
+        logger.info(f"最大返回变化数: {self.max_variations}")
         
         # 检查文件存在性
         self._check_files()
@@ -436,7 +460,7 @@ class AnalysisKataGoServer:
                             'winrate': winrate,
                             'score': score,
                             'visits': visits,
-                            'analysis': analysis_data[:5],  # 返回前5个候选走法
+                            'analysis': analysis_data[:self.max_variations],  # 返回配置数量的候选走法 (默认15)
                             'full_analysis': result  # 完整分析数据
                         }
                         

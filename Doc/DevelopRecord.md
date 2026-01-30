@@ -52,3 +52,23 @@
 需要注意的是，KataGo 不直接支持二维数组格式 的棋盘状态输入。你需要将二维数组转换为 [player, location] 格式的列表。
 
 总结 ：KataGo完全支持通过 initialStones 参数传入棋盘状态进行分析，这是官方设计的标准功能，非常适合你描述的使用场景。
+
+# 2026-01-30: Analysis Server Configuration Update
+
+## Problem
+Users reported that the Analysis Server was hardcoded to return only 5 variations, which was insufficient for deep analysis.
+
+## Solution
+1. **Configurable Limit**: Updated `katago_analysis_server.py` to support a configurable maximum variation limit.
+2. **Configuration File**: Implemented `server_config.json` support to allow easy configuration without modifying startup commands.
+3. **Environment Variables**: Retained environment variable support (`MAX_VARIATIONS`) with higher priority than the config file for flexibility.
+
+## Changes
+- Modified `katago_analysis_server.py`:
+    - Added `MAX_VARIATIONS` environment variable support (default: 15).
+    - Added `server_config.json` loading logic.
+    - Updated `select_move` to use `self.max_variations` instead of hardcoded 5.
+- Created `server_config.json` template.
+
+## Usage
+Edit `server_config.json` to change `max_variations` or other settings. Restart the server to apply changes.
