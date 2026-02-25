@@ -1,0 +1,7 @@
+{
+    "katago_binary": "/app/bin/katago",
+    "model_file": "/app/models/g170e-b10c128-s1141046784-d204142634.bin.gz",
+    "config_file": "/app/cpp/configs/analysis_example.cfg",
+    "port": 8080,
+    "max_variations": 15
+}

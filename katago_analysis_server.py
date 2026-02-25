@@ -1,0 +1,519 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+KataGo Analysis HTTP Server
+专门为KataGo Analysis引擎设计的HTTP服务器
+使用JSON通信协议获取完整的分析数据
+
+作者: Blckrice Tech
+创建时间: 2025年7月30日
+"""
+
+import sys
+import os
+import json
+import logging
+import subprocess
+import threading
+import time
+from datetime import datetime
+from flask import Flask, jsonify, request, make_response
+from flask_cors import CORS
+from queue import Queue, Empty
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+class KataGoAnalysisEngine:
+    def __init__(self, katago_binary, model_file, config_file):
+        self.katago_binary = katago_binary
+        self.model_file = model_file
+        self.config_file = config_file
+        self.process = None
+        self.input_queue = Queue()
+        self.output_queue = Queue()
+        self.running = False
+        self.lock = threading.Lock()
+        
+    def start(self):
+        """启动KataGo Analysis引擎"""
+        try:
+            cmd = [
+                self.katago_binary, 'analysis',
+                '-model', self.model_file,
+                '-config', self.config_file
+            ]
+            
+            logger.info(f"启动KataGo Analysis引擎: {' '.join(cmd)}")
+            
+            self.process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=0
+            )
+            
+            self.running = True
+            
+            # 启动输入输出处理线程
+            threading.Thread(target=self._input_handler, daemon=True).start()
+            threading.Thread(target=self._output_handler, daemon=True).start()
+            threading.Thread(target=self._stderr_handler, daemon=True).start()
+            
+            logger.info("✓ KataGo Analysis引擎启动成功")
+            return True
+            
+        except Exception as e:
+            logger.error(f"KataGo Analysis引擎启动失败: {str(e)}")
+            return False
+    
+    def _input_handler(self):
+        """处理输入队列"""
+        while self.running and self.process and self.process.poll() is None:
+            try:
+                query = self.input_queue.get(timeout=1.0)
+                if query:
+                    logger.debug(f"发送查询: {query}")
+                    self.process.stdin.write(query + '\n')
+                    self.process.stdin.flush()
+            except Empty:
+                continue
+            except Exception as e:
+                logger.error(f"输入处理错误: {str(e)}")
+                break
+    
+    def _output_handler(self):
+        """处理输出"""
+        while self.running and self.process and self.process.poll() is None:
+            try:
+                line = self.process.stdout.readline()
+                if line:
+                    line = line.strip()
+                    if line:
+                        logger.debug(f"收到响应: {line}")
+                        self.output_queue.put(line)
+            except Exception as e:
+                logger.error(f"输出处理错误: {str(e)}")
+                break
+
+    def _stderr_handler(self):
+        """处理标准错误输出 (日志/调优信息)"""
+        while self.running and self.process and self.process.poll() is None:
+            try:
+                line = self.process.stderr.readline()
+                if line:
+                    line = line.strip()
+                    if line:
+                        # 将KataGo的stderr日志直接输出到logger，方便调试
+                        logger.info(f"[KataGo Engine] {line}")
+            except Exception as e:
+                logger.error(f"Stderr处理错误: {str(e)}")
+                break
+    
+    def analyze_position(self, board_size, moves, config=None):
+        """分析局面"""
+        try:
+            # 构建分析查询
+            query = {
+                "id": f"analysis_{int(time.time() * 1000)}",
+                "moves": moves,
+                "rules": "chinese",
+                "komi": config.get('komi', 7.5) if config else 7.5,
+                "boardXSize": board_size,
+                "boardYSize": board_size,
+                "analyzeTurns": [len(moves)] if moves else [0],
+                "maxVisits": config.get('maxVisits', 500) if config else 500,
+                "includeOwnership": True,
+                "includePolicy": True,
+                "includePVVisits": True
+            }
+            
+            # 发送查询
+            query_str = json.dumps(query)
+            self.input_queue.put(query_str)
+            
+            # 等待响应
+            timeout = 30  # 开发阶段30秒
+            start_time = time.time()
+            
+            while time.time() - start_time < timeout:
+                try:
+                    response = self.output_queue.get(timeout=1.0)
+                    if response:
+                        try:
+                            result = json.loads(response)
+                            if result.get('id') == query['id']:
+                                return result
+                        except json.JSONDecodeError:
+                            # 可能是日志信息，继续等待
+                            continue
+                except Empty:
+                    continue
+            
+            logger.warning("分析超时")
+            return None
+            
+        except Exception as e:
+            logger.error(f"分析错误: {str(e)}")
+            return None
+    
+    def stop(self):
+        """停止引擎"""
+        self.running = False
+        if self.process:
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=5)
+            except:
+                self.process.kill()
+            self.process = None
+        logger.info("KataGo Analysis引擎已停止")
+
+class AnalysisKataGoServer:
+    def __init__(self):
+        self.app = Flask(__name__)
+        
+        # 添加调试日志
+        print("[DEBUG] 正在初始化 Flask-CORS...")
+        
+        # 允许的源列表 - 修改为允许所有
+        # allowed_origins = [
+        #     "http://localhost:8090",
+        #     "http://192.168.0.249:8080",
+        #     "https://localhost:8090",
+        #     "https://192.168.0.249:8080",
+        #     "http://kataengine.blackrice.top",
+        #     "https://kataengine.blackrice.top"
+        # ]
+        
+        # 统一的CORS配置 - 允许所有来源
+        # 注意: 当 supports_credentials=True 时，origins不能为 '*'，但在 flask-cors 中使用 '*' 通常可行，
+        # 或者我们可以依赖手动处理。为了最大兼容性，我们在这里允许所有。
+        CORS(
+            self.app,
+            resources={r"/*": {"origins": "*"}},
+            methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+            supports_credentials=True,
+            max_age=86400
+        )
+        
+        # 添加显式的OPTIONS处理
+        @self.app.before_request
+        def handle_preflight():
+            if request.method == "OPTIONS":
+                origin = request.headers.get('Origin')
+                # 总是允许 (反射 Origin)
+                if origin:
+                    response = make_response()
+                    response.headers.add("Access-Control-Allow-Origin", origin)
+                    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With")
+                    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+                    response.headers.add("Access-Control-Allow-Credentials", "true")
+                    response.headers.add("Access-Control-Max-Age", "86400")
+                    return response
+        
+        print(f"[DEBUG] CORS配置已更新为允许所有来源")
+        
+        # 备用 CORS 配置 - 移除重复配置或保持一致
+        # CORS(...) 
+
+        # 加载配置文件
+        file_config = {}
+        server_config_path = os.environ.get('SERVER_CONFIG_FILE', 'server_config.json')
+        if os.path.exists(server_config_path):
+            try:
+                with open(server_config_path, 'r') as f:
+                    file_config = json.load(f)
+                logger.info(f"已加载配置文件: {server_config_path}")
+            except Exception as e:
+                logger.error(f"加载配置文件失败: {e}")
+
+        # 配置优先级: 环境变量 > 配置文件 > 默认值
+        # (或者: 配置文件 > 环境变量 > 默认值? 用户通常希望配置文件覆盖默认值，但也可能想用Env覆盖配置文件。
+        # 通常 Docker 场景下 Env 覆盖 Config File 是标准做法，但用户 specifically asked for config file to avoid typing envs.
+        # 所以如果 config file 存在，我们优先使用它，除非用户 *真的* 想覆盖。
+        # 这里我们采用: 环境变量(如果有) > 配置文件(如果有) > 默认值 的标准层级，
+        # 这样用户可以用文件配置，但紧急情况依然可以用 ENV 覆盖。)
+        
+        # 实际上用户说 "不要每次用命令行来打"，意味着他想依靠文件。
+        # 只要他不传ENV，就会用文件。
+        
+        self.katago_binary = os.environ.get('KATAGO_BINARY', file_config.get('katago_binary', '/app/bin/katago'))
+        self.model_file = os.environ.get('KATAGO_MODEL', file_config.get('model_file', '/app/models/model.bin.gz'))
+        self.config_file = os.environ.get('KATAGO_CONFIG', file_config.get('config_file', '/app/cpp/configs/analysis_example.cfg'))
+        self.port = int(os.environ.get('HTTP_PORT', file_config.get('port', 8080)))
+        self.max_variations = int(os.environ.get('MAX_VARIATIONS', file_config.get('max_variations', 15)))
+        
+        logger.info(f"初始化KataGo Analysis HTTP服务器")
+        logger.info(f"配置文件路径: {server_config_path}")
+        logger.info(f"KataGo二进制文件: {self.katago_binary}")
+        logger.info(f"模型文件: {self.model_file}")
+        logger.info(f"配置文件: {self.config_file}")
+        logger.info(f"服务端口: {self.port}")
+        logger.info(f"最大返回变化数: {self.max_variations}")
+        
+        # 检查文件存在性
+        self._check_files()
+        
+        # 初始化KataGo引擎
+        self.engine = KataGoAnalysisEngine(
+            self.katago_binary,
+            self.model_file,
+            self.config_file
+        )
+        
+        # 设置路由
+        self._setup_routes()
+    
+    def _check_files(self):
+        """检查必要文件是否存在"""
+        files_to_check = [
+            (self.katago_binary, "KataGo二进制文件"),
+            (self.model_file, "模型文件"),
+            (self.config_file, "配置文件")
+        ]
+        
+        for file_path, description in files_to_check:
+            if not os.path.exists(file_path):
+                error_msg = f"{description}不存在: {file_path}"
+                logger.error(error_msg)
+                raise FileNotFoundError(error_msg)
+            logger.info(f"✓ {description}: {file_path}")
+    
+    def _setup_routes(self):
+        """设置Flask路由"""
+        
+        @self.app.route('/', methods=['GET'])
+        def root():
+            """根路径信息"""
+            return jsonify({
+                'service': 'KataGo Analysis Server',
+                'version': 'analysis-v1.0',
+                'status': 'running',
+                'endpoints': [
+                    '/health',
+                    '/info', 
+                    '/select-move/katago_gtp_bot',
+                    '/score/katago_gtp_bot',
+                    '/analyze'
+                ]
+            })
+        
+        @self.app.route('/info', methods=['GET'])
+        def info():
+            """服务器信息端点"""
+            return jsonify({
+                'service': 'KataGo Analysis Server',
+                'version': 'analysis-v1.0',
+                'katago_binary': self.engine.katago_binary,
+                'model_file': self.engine.model_file,
+                'config_file': self.engine.config_file,
+                'engine_running': self.engine.running,
+                'timestamp': datetime.now().isoformat()
+            })
+        
+        @self.app.route('/health', methods=['GET'])
+        def health_check():
+            """健康检查端点"""
+            return jsonify({
+                'status': 'healthy',
+                'timestamp': datetime.now().isoformat(),
+                'version': 'analysis-v1.0',
+                'engine_running': self.engine.running
+            })
+        
+        @self.app.route('/score/katago_gtp_bot', methods=['POST'])
+        def score_position():
+            """局面评估端点"""
+            try:
+                dtstr = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                content = request.json
+                
+                if not content:
+                    return jsonify({'error': '请求体不能为空'}), 400
+                
+                board_size = content.get('board_size', 19)
+                moves = content.get('moves', [])
+                config = content.get('config', {})
+                
+                logger.info(f'>>> {dtstr} score_position board_size={board_size} moves_count={len(moves)}')
+                
+                # 转换走法格式
+                if moves and isinstance(moves[0], list) and len(moves[0]) == 2:
+                    analysis_moves = moves
+                elif moves:
+                    analysis_moves = []
+                    for i, move in enumerate(moves):
+                        color = 'B' if i % 2 == 0 else 'W'
+                        analysis_moves.append([color, move])
+                else:
+                    analysis_moves = []
+                
+                # 调用分析引擎
+                result = self.engine.analyze_position(board_size, analysis_moves, config)
+                
+                if result:
+                    score_data = {
+                        'score': result.get('rootInfo', {}).get('scoreMean', 0.0),
+                        'score_stdev': result.get('rootInfo', {}).get('scoreStdev', 0.0),
+                        'winrate': result.get('rootInfo', {}).get('winrate', 0.5),
+                        'visits': result.get('rootInfo', {}).get('visits', 0),
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    
+                    logger.info(f'<<< {dtstr} score_position response: score={score_data["score"]:.1f}')
+                    return jsonify(score_data)
+                else:
+                    return jsonify({'error': 'Score analysis failed'}), 500
+                    
+            except Exception as e:
+                error_msg = f"处理score请求时出错: {str(e)}"
+                logger.error(error_msg)
+                return jsonify({'error': error_msg}), 500
+        
+        @self.app.route('/analyze', methods=['POST'])
+        def analyze():
+            """原生分析端点"""
+            try:
+                dtstr = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                content = request.json
+                
+                if not content:
+                    return jsonify({'error': '请求体不能为空'}), 400
+                
+                board_size = content.get('board_size', 19)
+                moves = content.get('moves', [])
+                config = content.get('config', {})
+                
+                logger.info(f'>>> {dtstr} analyze board_size={board_size} moves_count={len(moves)}')
+                
+                # 转换走法格式
+                if moves and isinstance(moves[0], list) and len(moves[0]) == 2:
+                    analysis_moves = moves
+                elif moves:
+                    analysis_moves = []
+                    for i, move in enumerate(moves):
+                        color = 'B' if i % 2 == 0 else 'W'
+                        analysis_moves.append([color, move])
+                else:
+                    analysis_moves = []
+                
+                # 调用分析引擎，返回完整分析数据
+                result = self.engine.analyze_position(board_size, analysis_moves, config)
+                
+                if result:
+                    logger.info(f'<<< {dtstr} analyze response: {len(result.get("moveInfos", []))} moves analyzed')
+                    return jsonify(result)  # 返回完整的KataGo分析结果
+                else:
+                    return jsonify({'error': 'Analysis failed'}), 500
+                    
+            except Exception as e:
+                error_msg = f"处理analyze请求时出错: {str(e)}"
+                logger.error(error_msg)
+                return jsonify({'error': error_msg}), 500
+
+        @self.app.route('/select-move/katago_gtp_bot', methods=['POST'])
+        def select_move():
+            """获取最佳走法和分析数据"""
+            try:
+                dtstr = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                content = request.json
+                
+                if not content:
+                    return jsonify({'error': '请求体不能为空'}), 400
+                
+                board_size = content.get('board_size', 19)
+                moves = content.get('moves', [])
+                config = content.get('config', {})
+                
+                logger.info(f'>>> {dtstr} select_move board_size={board_size} moves_count={len(moves)} config={config}')
+                
+                # KataGo Analysis模式需要[['B', 'Q16'], ['W', 'D16']]格式
+                if moves and isinstance(moves[0], list) and len(moves[0]) == 2:
+                    # 已经是正确的格式
+                    analysis_moves = moves
+                    logger.info(f'Using moves in color+position format: {analysis_moves}')
+                elif moves:
+                    # 如果只有位置信息，需要添加颜色信息
+                    analysis_moves = []
+                    for i, move in enumerate(moves):
+                        color = 'B' if i % 2 == 0 else 'W'  # 黑棋先手
+                        analysis_moves.append([color, move])
+                    logger.info(f'Converted position-only moves to color+position format: {analysis_moves}')
+                else:
+                    analysis_moves = []
+                
+                # 调用KataGo Analysis引擎
+                result = self.engine.analyze_position(board_size, analysis_moves, config)
+                
+                if result:
+                    # 提取分析结果
+                    analysis_data = result.get('moveInfos', [])
+                    if analysis_data:
+                        best_move = analysis_data[0].get('move', 'pass')
+                        winrate = analysis_data[0].get('winrate', 0.5)
+                        score = analysis_data[0].get('scoreMean', 0.0)
+                        visits = analysis_data[0].get('visits', 0)
+                        
+                        response_data = {
+                            'bot_move': best_move,
+                            'winrate': winrate,
+                            'score': score,
+                            'visits': visits,
+                            'analysis': analysis_data[:self.max_variations],  # 返回配置数量的候选走法 (默认15)
+                            'full_analysis': result  # 完整分析数据
+                        }
+                        
+                        logger.info(f'<<< {dtstr} select_move response: {best_move} (winrate: {winrate:.3f}, score: {score:.1f})')
+                        return jsonify(response_data)
+                    else:
+                        logger.warning(f'<<< {dtstr} select_move response: No analysis data')
+                        return jsonify({'error': 'No analysis data available'}), 500
+                else:
+                    logger.warning(f'<<< {dtstr} select_move response: Analysis failed')
+                    return jsonify({'error': 'Analysis failed'}), 500
+                
+            except Exception as e:
+                error_msg = f"处理select-move请求时出错: {str(e)}"
+                logger.error(error_msg)
+                return jsonify({'error': error_msg}), 500
+    
+    def run(self):
+        """启动服务器"""
+        try:
+            # 启动KataGo引擎
+            if not self.engine.start():
+                raise RuntimeError("KataGo引擎启动失败")
+            
+            logger.info(f"启动HTTP服务器，端口: {self.port}")
+            self.app.run(host='0.0.0.0', port=self.port, debug=False)
+            
+        except KeyboardInterrupt:
+            logger.info("收到中断信号，正在关闭服务器...")
+        except Exception as e:
+            logger.error(f"服务器运行错误: {str(e)}")
+        finally:
+            self.engine.stop()
+
+def main():
+    """主函数"""
+    try:
+        server = AnalysisKataGoServer()
+        server.run()
+    except Exception as e:
+        logger.error(f"服务器启动失败: {str(e)}")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()

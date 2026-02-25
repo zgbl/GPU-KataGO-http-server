@@ -1,0 +1,82 @@
+# Google Cloud Run 专用 KataGo HTTP Server Docker Compose 配置
+# 针对Cloud Run环境优化的配置
+
+version: '3.8'
+
+services:
+  # Cloud Run KataGo HTTP 服务
+  katago-cloudrun:
+    build:
+      context: .
+      dockerfile: Dockerfile.integrated
+    container_name: katago-cloudrun-server
+    hostname: katago-cloudrun
+    
+    # Cloud Run 端口配置 (Cloud Run 使用 PORT 环境变量)
+    ports:
+      - "${PORT:-8080}:8080"  # Cloud Run 会自动设置 PORT 环境变量
+    
+    # Cloud Run 环境变量
+    environment:
+      # Cloud Run 特定配置
+      - PORT=8080
+      - HOST=0.0.0.0
+      
+      # GPU 配置 (Cloud Run 不支持 GPU，如需 GPU 请使用 GKE)
+      # - CUDA_VISIBLE_DEVICES=0
+      # - NVIDIA_VISIBLE_DEVICES=all
+      # - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      
+      # 通用配置
+      - TZ=Asia/Shanghai
+      - LOG_LEVEL=INFO
+      
+      # Cloud Run 优化
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=production
+    
+    # 卷挂载 (Cloud Run 限制)
+    volumes:
+      # 注意：Cloud Run 不支持持久化卷，只能使用临时存储
+      # 模型文件需要打包到镜像中或使用 Cloud Storage
+      - ./KataGo-BlackRice/models:/app/models:ro
+      
+      # 临时日志目录 (Cloud Run 重启后会丢失)
+      - /tmp/logs:/app/logs
+    
+    # Cloud Run 资源限制
+    deploy:
+      resources:
+        limits:
+          # Cloud Run 内存限制 (最大 8GB)
+          memory: 4G
+          # Cloud Run CPU 限制 (最大 8 vCPU)
+          cpus: '2'
+        reservations:
+          memory: 2G
+          cpus: '1'
+    
+    # 健康检查 (Cloud Run 优化)
+    healthcheck:
+      test: [
+        "CMD", 
+        "curl", "-f", 
+        "http://localhost:8080/health",
+        "--max-time", "10"
+      ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # 日志配置 (Cloud Run 自动收集)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+# Cloud Run 不需要自定义网络
+# networks:
+#   katago-network:
+#     driver: bridge

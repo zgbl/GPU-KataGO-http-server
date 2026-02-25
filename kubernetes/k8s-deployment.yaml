@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: katago-server
+  labels:
+    app: katago-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: katago-server
+  template:
+    metadata:
+      labels:
+        app: katago-server
+    spec:
+      containers:
+      - name: katago
+        image: katago-k8s:latest
+        imagePullPolicy: Never  # Use locally built image
+        ports:
+        - containerPort: 8080
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "all"
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: "compute,utility"
+        - name: TZ
+          value: "Asia/Shanghai"
+        - name: SERVER_CONFIG_FILE
+          value: "/app/configs/custom/server_config.json"
+        - name: KATAGO_MODEL
+          value: "/app/models/model.bin.gz"
+        - name: KATAGO_CONFIG
+          value: "/app/configs/custom/katago_gtp.cfg"
+        resources:
+          limits:
+            memory: "8Gi"
+            # nvidia.com/gpu: 1 # Uncomment if NVIDIA device plugin is installed
+          requests:
+            memory: "3Gi"
+        volumeMounts:
+        - name: models
+          mountPath: /app/models
+          readOnly: true
+        - name: configs
+          mountPath: /app/configs/custom
+          readOnly: true
+        - name: logs
+          mountPath: /app/logs
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+      volumes:
+      - name: models
+        hostPath:
+          path: /run/desktop/mnt/host/d/Codes/GPU-KataGO-http-server-master/GPU-KataGO-http-server-master/models
+          type: Directory
+      - name: configs
+        hostPath:
+          path: /run/desktop/mnt/host/d/Codes/GPU-KataGO-http-server-master/GPU-KataGO-http-server-master/configs
+          type: Directory
+      - name: logs
+        emptyDir: {}
