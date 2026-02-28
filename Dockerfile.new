@@ -1,20 +1,16 @@
-# 整合版 KataGo HTTP Server Dockerfile
-# 使用预编译的 KataGo 1.16.4 引擎 (CUDA 12.5)
-# 使用 devel 镜像以获取完整的开发库 (解决 libcudnn 缺失问题)
+# Minimal base - plain Ubuntu, let AppImage's bundled CUDA handle everything
+# The NVIDIA Container Runtime injects the driver stub (libcuda.so.1) at runtime
+FROM ubuntu:22.04
 
-FROM nvidia/cuda:12.5.1-cudnn-devel-ubuntu22.04
-
-# 设置环境变量
 ENV DEBIAN_FRONTEND=noninteractive
-ENV CUDA_VISIBLE_DEVICES=0
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV PATH="/app/bin:$PATH"
 
-# 设置工作目录
 WORKDIR /app
 
-# 安装运行时依赖和解压工具
+# Runtime dependencies only - no CUDA base image needed
+# KataGo AppImage bundles its own CUDA 12.5 runtime libraries
 RUN apt-get update && apt-get install -y \
     libzip4 \
     zlib1g \
@@ -23,13 +19,13 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libgoogle-perftools4 \
     curl \
-    kmod \
+    libstdc++6 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 创建必要的目录
 RUN mkdir -p /app/logs /app/models /app/configs /app/bin /app/katago-server
 
-# 1. 复制并解压 KataGo AppImage (解压以绕过 FUSE 限制)
+# Extract KataGo AppImage (bundles CUDA 12.5 runtime, cuDNN 8.9.7, and all deps)
 COPY katago-v1.16.4-cuda12.5-cudnn8.9.7-linux-x64+bs50/katago /app/bin/katago_appimage
 RUN chmod +x /app/bin/katago_appimage && \
     cd /app/bin && \
@@ -37,39 +33,28 @@ RUN chmod +x /app/bin/katago_appimage && \
     mv squashfs-root /app/katago_extracted && \
     ln -s /app/katago_extracted/usr/bin/katago /app/bin/katago
 
-# 复制示例配置
-COPY katago-v1.16.4-cuda12.5-cudnn8.9.7-linux-x64+bs50/*.cfg /app/configs/
+# Set library path so AppImage's bundled CUDA libs are found
+# The NVIDIA Container Runtime will inject libcuda.so.1 at container start
+ENV LD_LIBRARY_PATH="/app/katago_extracted/usr/lib:/app/katago_extracted/usr/lib/x86_64-linux-gnu"
 
-# 2. 复制权重文件
+# Copy configs and weight
+COPY katago-v1.16.4-cuda12.5-cudnn8.9.7-linux-x64+bs50/*.cfg /app/configs/
 COPY Weights/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz /app/models/model.bin.gz
 
-# 3. 复制 HTTP 服务器代码
+# Copy HTTP server code
 COPY katago-server/katago_gtp_bot.py /app/katago-server/
 COPY katago-server/get_bot_app.py /app/katago-server/
 COPY katago-server/katago_server.py /app/katago-server/
 COPY katago-server/requirements.txt /app/
 COPY katago_analysis_server.py /app/
 
-# 安装 Python 依赖
 RUN pip3 install --no-cache-dir -r /app/requirements.txt && \
     pip3 install --no-cache-dir flask-cors
 
-# 4. 复制并设置默认配置
-COPY configs/katago_gtp.cfg /app/configs/custom_katago.cfg
-# 更新 server_config.json 以匹配容器内路径
 RUN echo '{"katago_binary": "/app/bin/katago", "model_file": "/app/models/model.bin.gz", "config_file": "/app/configs/custom_katago.cfg", "port": 8080, "max_variations": 15}' > /app/server_config.json
 
-# 健康检查脚本
-RUN echo '#!/bin/bash' > /app/health_check.sh && \
-    echo 'curl -f http://localhost:8080/health || exit 1' >> /app/health_check.sh && \
-    chmod +x /app/health_check.sh
+COPY configs/katago_gtp.cfg /app/configs/custom_katago.cfg
 
-# 暴露端口
 EXPOSE 8080
 
-# 健康检查
-HEALTHCHECK --interval=60s --timeout=30s --start-period=30s --retries=3 \
-    CMD /app/health_check.sh
-
-# 启动服务器
 CMD ["python3", "/app/katago_analysis_server.py"]

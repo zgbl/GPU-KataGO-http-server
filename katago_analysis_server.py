@@ -132,7 +132,7 @@ class KataGoAnalysisEngine:
                 "boardXSize": board_size,
                 "boardYSize": board_size,
                 "analyzeTurns": [len(moves)] if moves else [0],
-                "maxVisits": config.get('maxVisits', 500) if config else 500,
+                "maxVisits": config.get('maxVisits', 50) if config else 50,
                 "includeOwnership": True,
                 "includePolicy": True,
                 "includePVVisits": True
@@ -143,7 +143,7 @@ class KataGoAnalysisEngine:
             self.input_queue.put(query_str)
             
             # 等待响应
-            timeout = 30  # 开发阶段30秒
+            timeout = 20  # 20s - must complete well before the frontend's 25s timeout
             start_time = time.time()
             
             while time.time() - start_time < timeout:

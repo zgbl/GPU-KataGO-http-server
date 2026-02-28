@@ -5,7 +5,9 @@ metadata:
   labels:
     app: katago-server
 spec:
-  replicas: 2
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: katago-server
@@ -17,7 +19,9 @@ spec:
       containers:
       - name: katago
         image: katago-k8s:latest
-        imagePullPolicy: Never  # Use locally built image
+        imagePullPolicy: Never
+        securityContext:
+          privileged: true
         ports:
         - containerPort: 8080
         env:
@@ -38,9 +42,10 @@ spec:
         resources:
           limits:
             memory: "8Gi"
-            # nvidia.com/gpu: 1 # Uncomment if NVIDIA device plugin is installed
+            nvidia.com/gpu: 1
           requests:
             memory: "3Gi"
+            nvidia.com/gpu: 1
         volumeMounts:
         - name: models
           mountPath: /app/models
@@ -54,13 +59,13 @@ spec:
           httpGet:
             path: /health
             port: 8080
-          initialDelaySeconds: 60
+          initialDelaySeconds: 90
           periodSeconds: 30
         readinessProbe:
           httpGet:
             path: /health
             port: 8080
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60
           periodSeconds: 15
       volumes:
       - name: models

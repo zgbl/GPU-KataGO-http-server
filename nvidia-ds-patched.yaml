@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-ds
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
+    spec:
+      initContainers:
+      - name: link-wsl-lib
+        image: busybox
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          mkdir -p /wsl/lib
+          cp -P /usr/lib/wsl/lib/libnvidia-ml.so.1 /wsl/lib/libnvidia-ml.so
+          cp -P /usr/lib/wsl/lib/libnvidia-ml.so.1 /wsl/lib/libnvidia-ml.so.1
+        volumeMounts:
+        - mountPath: /usr/lib/wsl/lib
+          name: wsl-lib
+        - mountPath: /wsl/lib
+          name: wsl-lib-mapped
+      containers:
+      - env:
+        - name: FAIL_ON_INIT_ERROR
+          value: "false"
+        - name: LD_LIBRARY_PATH
+          value: "/wsl/lib:/usr/lib/wsl/lib"
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: "all"
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.17.0
+        imagePullPolicy: IfNotPresent
+        name: nvidia-device-plugin-ctr
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /var/lib/kubelet/device-plugins
+          name: device-plugin
+        - mountPath: /usr/lib/wsl/lib
+          name: wsl-lib
+        - mountPath: /wsl/lib
+          name: wsl-lib-mapped
+      dnsPolicy: ClusterFirst
+      priorityClassName: system-node-critical
+      restartPolicy: Always
+      tolerations:
+      - effect: NoSchedule
+        key: nvidia.com/gpu
+        operator: Exists
+      volumes:
+      - hostPath:
+          path: /var/lib/kubelet/device-plugins
+        name: device-plugin
+      - hostPath:
+          path: /usr/lib/wsl/lib
+        name: wsl-lib
+      - emptyDir: {}
+        name: wsl-lib-mapped
