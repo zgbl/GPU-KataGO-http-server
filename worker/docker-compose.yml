@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  worker:
+    build: .
+    container_name: katago-worker
+    environment:
+      - REDIS_URL=redis://:blackrice123@${REDIS_HOST:-redis}:6379
+      - MONGODB_URI=${MONGODB_URI}
+      - KATAGO_API_URL=${KATAGO_API_URL:-http://192.168.0.162:8081}
+    restart: always
+    network_mode: "host" # 方便访问同机的 KataGo 容器和外部 Redis
