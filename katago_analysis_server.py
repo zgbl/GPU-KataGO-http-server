@@ -42,6 +42,9 @@ class KataGoAnalysisEngine:
         self.output_queue = Queue()
         self.running = False
         self.lock = threading.Lock()
+        # 分析锁：确保同一时间只有一个分析请求在处理
+        self.analysis_lock = threading.Lock()
+        self.is_busy = False
         
     def start(self):
         """启动KataGo Analysis引擎"""
@@ -121,11 +124,21 @@ class KataGoAnalysisEngine:
                 break
     
     def analyze_position(self, board_size, moves, config=None):
-        """分析局面"""
+        """分析局面（线程安全：同时只允许一个分析请求）"""
+        with self.analysis_lock:
+            self.is_busy = True
+            try:
+                return self._do_analyze(board_size, moves, config)
+            finally:
+                self.is_busy = False
+
+    def _do_analyze(self, board_size, moves, config=None):
+        """实际执行分析（在 analysis_lock 保护下调用）"""
         try:
-            # 构建分析查询
+            # 构建分析查询，使用唯一 id 避免 output_queue 中的旧数据干扰
+            query_id = f"analysis_{int(time.time() * 1000)}_{id(threading.current_thread())}"
             query = {
-                "id": f"analysis_{int(time.time() * 1000)}",
+                "id": query_id,
                 "moves": moves,
                 "rules": "chinese",
                 "komi": config.get('komi', 7.5) if config else 7.5,
@@ -137,32 +150,40 @@ class KataGoAnalysisEngine:
                 "includePolicy": True,
                 "includePVVisits": True
             }
-            
+
+            # 清空 output_queue 里可能残留的旧数据，防止拿到脏数据
+            while not self.output_queue.empty():
+                try:
+                    self.output_queue.get_nowait()
+                except Empty:
+                    break
+
             # 发送查询
             query_str = json.dumps(query)
             self.input_queue.put(query_str)
-            
-            # 等待响应
-            timeout = 20  # 20s - must complete well before the frontend's 25s timeout
+            # 等待匹配 id 的响应
+            timeout = 60  # 单步分析最多60秒 (must complete before frontend or worker timeouts)
             start_time = time.time()
-            
+
             while time.time() - start_time < timeout:
                 try:
                     response = self.output_queue.get(timeout=1.0)
                     if response:
                         try:
                             result = json.loads(response)
-                            if result.get('id') == query['id']:
+                            if result.get('id') == query_id:
                                 return result
+                            else:
+                                # 不是我的响应，放回去（极少情况）
+                                logger.debug(f"忽略非目标响应 id={result.get('id')}")
                         except json.JSONDecodeError:
-                            # 可能是日志信息，继续等待
                             continue
                 except Empty:
                     continue
-            
-            logger.warning("分析超时")
+
+            logger.warning(f"分析超时 (query_id={query_id})")
             return None
-            
+
         except Exception as e:
             logger.error(f"分析错误: {str(e)}")
             return None
@@ -333,6 +354,15 @@ class AnalysisKataGoServer:
                 'engine_running': self.engine.running
             })
         
+        @self.app.route('/queue/status', methods=['GET'])
+        def queue_status():
+            """引擎忙碌状态查询端点 —— 供 Bull Worker 调用"""
+            return jsonify({
+                'is_busy': self.engine.is_busy,
+                'engine_running': self.engine.running,
+                'timestamp': datetime.now().isoformat()
+            })
+
         @self.app.route('/score/katago_gtp_bot', methods=['POST'])
         def score_position():
             """局面评估端点"""
