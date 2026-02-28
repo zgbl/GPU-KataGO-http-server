@@ -1,8 +1,8 @@
 # prepare_worker.ps1
 # 在 Windows 10 机器运行，用于同步最新的后端代码到 worker 文件夹
 
-$BackendDir = "C:\path\to\blackricegobackend2" # 请修改为你的实际路径
-$WorkerDir = "C:\path\to\GPU-KataGO-http-server\worker"
+$BackendDir = "d:\Codes\blackricegobackend2"
+$WorkerDir = "d:\Codes\GPU-KataGO-http-server-master\GPU-KataGO-http-server-master\worker"
 
 Write-Host "Syncing files to $WorkerDir..."
 
