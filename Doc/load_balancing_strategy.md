@@ -1,31 +1,35 @@
-# KataGo 负载均衡与并发架构指南
+# KataGo 并发架构与负载均衡指南 (基于棋谱 Hash 的会话保持)
 
-当分析任务增加，单个 KataGo 容器（即便有强大的 GPU）也可能因为请求积压而导致响应变慢。为了充分利用 GPU 算力并处理高并发，我们可以部署多个 KataGo 引擎，并通过负载均衡器（Load Balancer）进行分发。
+当分析任务增加时，部署多个 KataGo 引擎能充分利用 GPU。但是传统负载均衡遇到了特殊挑战。
 
-## 核心挑战：Sticky Session (会话保持)
+## 核心痛点：为什么不能用 IP Hash？
+1. 所有的分析请求很可能全部来自于你自己的同一个后端业务服务（比如同一个 Node.js/Python 进程发出的 HTTP 请求），这时来源 IP 永远只有一个。IP Hash 就会把所有流量全打爆在一个 KataGo 容器上，另一个完全闲置。
+2. KataGo 内部有 MCTS（蒙特卡洛树搜索）缓存。**同一个棋谱（对局）的连续步数分析，必须始终路由到同一个 KataGo Engine。**如果打乱分发，它们无法重用上一回合的思考树，会导致大量算力浪费。
 
- KataGo 内部有 MCTS（蒙特卡洛树搜索）缓存，如果一盘棋的不同步骤随机发给不同的实例，它们无法重用上一回合的思考树，会导致大量算力浪费。
-因此，**同一个客户或同一盘对局的分析必须一直路由到同一个 KataGo Engine（即会话保持 / Sticky Session）**。
+**真正的需求是：基于棋谱 Hash 的 Sticky Session（会话保持）。**
 
-## 方案一：Nginx 反向代理与 IP Hash 负载均衡 (推荐)
+---
 
-这是最轻量、也最标准的解决方案。通过 Nginx 作为统一入口，将流量分发给后端的多个 KataGo 容器。
+## 方案一：Nginx 一致性哈希 (基于棋谱前 50 步的 Header) —— 【性能最高，推荐】
 
-### 1. 架构示意
+最优雅且解耦的高并发方案是： **让发送请求的前端在 HTTP Header 中带上一个 `X-Game-Hash`。**
+- **Hash 生成规则：** 提取棋谱的**前 50 步**（如果不足 50 步则取当前所有步数），拼成字符串后计算一个 Hash (如 MD5)。
+- Nginx 会根据这个 Header 计算 Hash 并一致性地分配到同一个后端容器。
+
+### 1. 架构流转
 ```
-          (请求统一入口)
-          http://IP:8080/analyze
-                   |
-                [Nginx] (使用 IP Hash 会话保持)
-                /     \
-    (来自IP A) /       \ (来自IP B)
-              /         \
-    [Engine 1: 8081]  [Engine 2: 8082]
-    (处理局A的对弈)    (处理局B的对弈)
+      POST /analyze
+      Header: X-Game-Hash: <前50步算出的一致性Hash>
+               |
+            [Nginx 代理层: 8060端口] (使用 hash $http_x_game_hash consistent 算法)
+           /        \
+ (Hash: game_001_id) \
+         /            \
+ [Engine 1: 8081]  [Engine 2: 8082]
 ```
 
 ### 2. Nginx 配置示例 (`nginx.conf`)
-新建一个 `nginx.conf`，利用 `ip_hash` 保证来自相同 IP 的请求始终落在同一个容器上。
+新建一个 `nginx.conf`，利用 `hash ... consistent` 指令实现真正的棋谱绑定路由：
 
 ```nginx
 events {
@@ -34,18 +38,19 @@ events {
 
 http {
     upstream katago_backend {
-        ip_hash;              # 开启基于客户端 IP 的 Sticky Session
+        # 【核心配置】根据请求头 X-Game-Hash 的值进行一致性哈希路由
+        hash $http_x_game_hash consistent;
+        
         server host.docker.internal:8081;  # Engine 1
         server host.docker.internal:8082;  # Engine 2
+        # 可以随时加 Engine 3, Engine 4... consistent 参数保证加机器时缓存抖动最小
     }
 
     server {
-        listen 8080;          # 发布对外的统一端口
+        listen 8080;          # 发布对外的统一入口
 
         location / {
             proxy_pass http://katago_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
             
             # 对于较长时间的深度分析，建议增加超时时间
             proxy_read_timeout 120s;
@@ -54,19 +59,52 @@ http {
 }
 ```
 
-## 方案二：应用层调度器 (Router)
-
-如果你的所有请求都来自同一个后端（比如你写了一个 Python / Node.js 服务器，网关 IP 全是一样的），那么 IP Hash 就会失效（全打到一台机器上）。这时你应该在代码里自己调度。
-
-### 调度逻辑：
-1. **维护映射表**: 服务端维护一个字典，记录 `{ GameID: Engine_URL }` 的映射。
-2. **处理新请求**: 
-   - 提取请求里的 `GameID` (对局标识)。
-   - `target_url = dict.get(GameID)`。
-   - 如果不存在，则查询所有引擎的 `/queue/status` (或者自定义的负载指标)，挑选一个**当前最闲的引擎**，然后将 `GameID` 与它绑定，存入字典。
-3. **转发并返回**: 把后续关于这个 `GameID` 的所有 HTTP 请求全都转发给 `target_url`。
-
-对于 AI 对弈或分析，应用层转发其实更精细且防错，能保证绝对完美地错峰分发！
-
 ---
-建议将多实例的启动命令写入一段单独的 `docker-compose-workers.yml` 中统一管理，以便根据服务器显存规模（如 8GB 建议 2-3 个实例）快速伸缩。
+
+## 方案二：自建 API Router / 调度中台 (基于 Request Body 解析)
+
+如果不想改动“原本发请求的代码（即不想强行塞一个 HTTP Header）”，或者想要做复杂的动态调度（如：当某台引擎崩了自动剔除重试，或依据引擎 GPU 占用率进行智能摘除），你可以用 Python/Node写一个几十行代码的 API Router 层。
+
+### 1. 架构流转
+不需要加任何 Header。客户端只管发送原始的 JSON 给 Router，Router 拆解出 JSON 里面的 `moves` 数组并计算 Hash 分发。
+```
+          [ Python FastAPI / Node.js Router (网关层) ]
+                   |
+    1. 解析 POST 请求体: payload = await request.json()
+    2. 计算哈希: hash_id = hash(str(payload['moves'])) % len(engines)
+    3. 代理转发: 转发给 engines[hash_id] 并透传返回值
+```
+
+### 2. Python (FastAPI/requests) 伪代码实现示例：
+```python
+import hashlib
+import requests
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# 可用后端的列表配置
+ENGINES = ["http://localhost:8081", "http://localhost:8082"]
+
+@app.route('/analyze', methods=['POST'])
+def proxy_analyze():
+    req_data = request.json
+    moves = req_data.get('moves', [])
+    
+    # 核心：根据前几十步的 moves 阵列计算 MD5 哈希作为粘性标识
+    moves_str = str(moves).encode('utf-8')
+    game_hash_val = int(hashlib.md5(moves_str).hexdigest(), 16)
+    
+    # 取模分配到具体的引擎
+    target_idx = game_hash_val % len(ENGINES)
+    target_url = ENGINES[target_idx]
+    
+    # 透传请求给对应的 KataGo Engine
+    resp = requests.post(f"{target_url}/analyze", json=req_data)
+    return jsonify(resp.json())
+
+if __name__ == '__main__':
+    app.run(port=8080)
+```
+**优点**：不需要客户端做任何改造，网关直接接管、智能调度。甚至可以定制“只拿前2步落子算Hash”的深度逻辑。
+**缺点**：增加了一个自己写的服务组件需要维护。
